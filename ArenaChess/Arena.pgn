@@ -1,0 +1,50 @@
+[Event "Computer chess game"]
+[Site "LEOB30"]
+[Date "2026.09.24"]
+[Round "?"]
+[White "Minichess"]
+[Black "Minichess"]
+[Result "0-1"]
+[BlackElo "2200"]
+[ECO "A00"]
+[Opening "Amar (Paris) Opening"]
+[Time "13:25:03"]
+[WhiteElo "2000"]
+[TimeControl "300"]
+[Termination "normal"]
+[PlyCount "88"]
+[WhiteType "program"]
+[BlackType "program"]
+
+1. Nh3 Nh6 2. Ng5 Rg8 3. Nxh7 Rh8 4. Nxf8 Rxf8 5. Rg1 Rh8 6. Rh1 Rg8 7. Rg1
+Rh8 8. Rh1 Rg8 9. h3 Rh8 10. Rh2 Rg8 11. Rh1 Rh8 12. h4 Rg8 13. Rh3 Rh8 14.
+Rg3 Rg8 15. Rg5 Rh8 16. Rxg7 Rf8 17. Rh7 Ng8 18. Rh8 Nc6 19. Rh7 Nf6 20.
+Rg7 Rh8 21. Rg5 Rxh4 22. Rg7 Kf8 23. Rg5 Ke8 24. Rg7 Kf8 25. Rg5 Ke8 26. g3
+Rh8 27. Rg7 Rf8 28. Rg5 Rh8 29. Rg7 Rf8 30. f3 Rh8 31. Rg5 Rf8 32. Rg7 Rh8
+33. Kf2 Rh2+ 34. Ke3 Nd5+ 35. Ke4 Nf6+ 36. Kf5 Nd4+ 37. Kg5 Ne6+ 38. Kf5
+Nxg7+ 39. Kg5 Kf8 40. Kf4 Kg8 41. Kg5 Kh8 42. Kf4 Kg8 43. Kg5 Ne6+ 44. Kf5
+Rh5# 0-1
+
+[Event "Computer chess game"]
+[Site "LEOB30"]
+[Date "2026.09.24"]
+[Round "?"]
+[White "Minichess"]
+[Black "Minichess"]
+[Result "*"]
+[BlackElo "2200"]
+[ECO "A00"]
+[Opening "Amar (Paris) Opening"]
+[Time "13:25:59"]
+[WhiteElo "2000"]
+[TimeControl "300"]
+[Termination "unterminated"]
+[PlyCount "41"]
+[WhiteType "program"]
+[BlackType "program"]
+
+1. Nh3 Nh6 2. Ng5 Rg8 3. Nxh7 Rh8 4. Nxf8 Rxf8 5. Rg1 Rh8 6. Rh1 Rg8 7. Rg1
+Rh8 8. Rh1 Rg8 9. h3 Rh8 10. Rh2 Rg8 11. Rh1 Rh8 12. h4 Rg8 13. Rh3 Rh8 14.
+Rg3 Rg8 15. Rg5 Rh8 16. Rxg7 Rf8 17. Rh7 Ng8 18. Rh8 Nc6 19. Rh7 Nf6 20.
+Rg7 Rh8 21. Rg5 *
+

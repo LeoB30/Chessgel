@@ -1,0 +1,11 @@
+   EScore     S-B
+
+0 of 10 games played
+Name of the tournament: Arena Tournament
+Site/ Country: LEOB30, New Zealand
+Level: Tournament Game in 5 Minutes
+Hardware: 13th Gen Intel(R) Core(TM) i7-1355U with 15.7 GB Memory
+Operating system: Windows 10 Enterprise Professional (Build 9200) 64 bit
+PGN-File: C:\Users\leoba\Desktop\AAA III\ArenaChess\Arena.pgn
+Website: 
+E-Mail Address: 

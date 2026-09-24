@@ -1,0 +1,1 @@
+"""Chess engine GUI package."""
