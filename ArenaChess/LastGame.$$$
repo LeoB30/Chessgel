@@ -1,0 +1,25 @@
+[LastMove "8"]
+[Event "Computer chess game"]
+[Site "LEOB30"]
+[Date "2026.09.24"]
+[Round "?"]
+[White "Minichess [001]"]
+[Black "Minichess [001]"]
+[Result "1-0"]
+[BlackElo "2000"]
+[ECO "A00"]
+[Opening "Dunst (Sleipner-Heinrichsen-Van Geet) Opening"]
+[Time "13:30:20"]
+[Variation "1...Nf6 2.Nf3"]
+[WhiteElo "2000"]
+[TimeControl "300"]
+[Termination "time forfeit"]
+[PlyCount "7"]
+[WhiteType "program"]
+[BlackType "program"]
+
+1. Nf3 {(Ng1-f3) +0.50/3 0} Nf6 {(Ng8-f6) 0.00/3 1} 2. Nc3
+{(Nb1-c3) +0.40/3 1} Nc6 {(Nb8-c6) 0.00/3 1} 3. e3 {(e2-e3) +0.20/3 6} e6
+{(e7-e6) 0.00/3 7} 4. d4 {(d2-d4) +0.20/3 11} ... {Black forfeits on time}
+1-0
+

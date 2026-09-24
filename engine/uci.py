@@ -4,8 +4,8 @@ import time
 import chess
 from engine.search import find_best_move
 
-ENGINE_NAME: str = "MiniChess Python"
-ENGINE_AUTHOR: str = "Antigravity Mentor"
+ENGINE_NAME: str = "MiniChess Pro"
+ENGINE_AUTHOR: str = "Antigravity Chess AI"
 
 
 class UCIEngine:
@@ -14,6 +14,11 @@ class UCIEngine:
     def __init__(self) -> None:
         self.board: chess.Board = chess.Board()
         self.use_book: bool = True
+        self.book_repertoire: str = "catalan_carokann"
+        self.book_selection: str = "best"
+        self.book_max_ply: int = 24
+        self.default_depth: int = 3
+        self.default_movetime_ms: int | None = None
 
     def run(self) -> None:
         """Main UCI command processing loop."""
@@ -47,6 +52,17 @@ class UCIEngine:
             self._send_response(f"id name {ENGINE_NAME}")
             self._send_response(f"id author {ENGINE_AUTHOR}")
             self._send_response("option name OwnBook type check default true")
+            self._send_response(
+                "option name BookRepertoire type combo default Catalan_CaroKann "
+                "var Catalan_CaroKann var Catalan_White var CaroKann_Black var Tournament"
+            )
+            self._send_response(
+                "option name BookSelection type combo default BestMove "
+                "var BestMove var Weighted var Random"
+            )
+            self._send_response("option name BookMaxPly type spin default 24 min 1 max 60")
+            self._send_response("option name SearchDepth type spin default 3 min 1 max 10")
+            self._send_response("option name MoveTime type spin default 0 min 0 max 60000")
             self._send_response("uciok")
 
         elif cmd == "setoption":
@@ -77,9 +93,21 @@ class UCIEngine:
                 val_idx: int = args.index("value") + 1
                 if name_idx < len(args) and val_idx < len(args):
                     opt_name: str = args[name_idx].lower()
-                    opt_val: str = args[val_idx].lower()
+                    opt_val: str = " ".join(args[val_idx:]).strip()
+
                     if opt_name == "ownbook":
-                        self.use_book = opt_val in ("true", "1", "yes", "on")
+                        self.use_book = opt_val.lower() in ("true", "1", "yes", "on")
+                    elif opt_name == "bookrepertoire":
+                        self.book_repertoire = opt_val.lower()
+                    elif opt_name == "bookselection":
+                        self.book_selection = opt_val.lower()
+                    elif opt_name == "bookmaxply" and opt_val.isdigit():
+                        self.book_max_ply = max(1, int(opt_val))
+                    elif opt_name == "searchdepth" and opt_val.isdigit():
+                        self.default_depth = max(1, int(opt_val))
+                    elif opt_name == "movetime" and opt_val.isdigit():
+                        ms: int = int(opt_val)
+                        self.default_movetime_ms = ms if ms > 0 else None
         except Exception:
             pass
 
@@ -92,7 +120,6 @@ class UCIEngine:
             self.board.reset()
             moves_index: int = 1
         elif args[0] == "fen":
-            # Collect FEN parts (6 tokens)
             fen_tokens: list[str] = []
             moves_index = 1
             while moves_index < len(args) and args[moves_index] != "moves":
@@ -111,33 +138,47 @@ class UCIEngine:
 
     def _handle_go(self, args: list[str]) -> None:
         """Executes search and reports 'bestmove'."""
-        depth: int = 3
-        # Check if depth parameter was passed
+        depth: int = self.default_depth
+        movetime: int | None = self.default_movetime_ms
+
         if "depth" in args:
             depth_idx: int = args.index("depth") + 1
             if depth_idx < len(args) and args[depth_idx].isdigit():
                 depth = int(args[depth_idx])
 
+        if "movetime" in args:
+            mt_idx: int = args.index("movetime") + 1
+            if mt_idx < len(args) and args[mt_idx].isdigit():
+                movetime = int(args[mt_idx])
+
         start_time: float = time.perf_counter()
 
-        def on_search_info(d: int, score: int, nodes: int, move: chess.Move) -> None:
+        def on_search_info(d: int, score: int, nodes: int, move: chess.Move, source: str) -> None:
             elapsed: float = time.perf_counter() - start_time
             time_ms: int = int(elapsed * 1000)
             nps: int = int(nodes / elapsed) if elapsed > 0.001 else nodes * 1000
-            self._send_response(
-                f"info depth {d} score cp {score} time {time_ms} nodes {nodes} nps {nps} pv {move.uci()}"
-            )
+            if source == "book":
+                self._send_response(
+                    f"info depth 1 score cp 0 time 0 nodes 1 nps 0 string Book move ({move.uci()}) pv {move.uci()}"
+                )
+            else:
+                self._send_response(
+                    f"info depth {d} score cp {score} time {time_ms} nodes {nodes} nps {nps} pv {move.uci()}"
+                )
 
         best_move: chess.Move | None = find_best_move(
             self.board,
             depth=depth,
+            movetime_ms=movetime,
             use_book=self.use_book,
+            book_repertoire=self.book_repertoire,
+            book_selection=self.book_selection,
+            book_max_ply=self.book_max_ply,
             info_callback=on_search_info,
         )
         if best_move is not None:
             self._send_response(f"bestmove {best_move.uci()}")
         else:
-            # Fallback when no move exists
             self._send_response("bestmove (none)")
 
     @staticmethod
