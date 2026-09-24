@@ -1,0 +1,1 @@
+"""Chess Tracker application package."""
