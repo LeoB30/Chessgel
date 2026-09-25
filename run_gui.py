@@ -1,6 +1,6 @@
 from __future__ import annotations
 import sys
-import tkinter as tk
+from PyQt6.QtWidgets import QApplication
 
 # Enable Windows Per-Monitor DPI Awareness for pixel-perfect screen coordinate capture
 if sys.platform == "win32":
@@ -18,14 +18,16 @@ from gui.app import ChessApp
 
 
 def main() -> None:
-    """Launches MiniChess Graphical User Interface."""
-    root: tk.Tk = tk.Tk()
-    app: ChessApp = ChessApp(root)
-    root.mainloop()
+    """Launches MiniChess PyQt6 Graphical User Interface."""
+    qt_app: QApplication = QApplication(sys.argv)
+    qt_app.setApplicationName("MiniChess AI")
+    window: ChessApp = ChessApp()
+    window.show()
+    sys.exit(qt_app.exec())
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--engine":
+    if len(sys.argv) > 1 and sys.argv[1] in ("--engine", "--uci"):
         from engine.uci import UCIEngine
         engine: UCIEngine = UCIEngine()
         engine.run()

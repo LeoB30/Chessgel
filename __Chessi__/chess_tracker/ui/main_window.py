@@ -48,6 +48,7 @@ from chess_tracker.core.engine_registry import (
 )
 from chess_tracker.core.game_state import GameState
 from chess_tracker.ui.board_mirror import BoardMirrorWidget
+from chess_tracker.ui.board_overlay import BoardOverlayWindow
 from chess_tracker.ui.eval_bar import EvalBarWidget
 from chess_tracker.ui.screen_selector import ScreenRegionSelector
 from chess_tracker.ui.workers import EngineWorker, VisionWorker
@@ -77,6 +78,15 @@ class MainWindow(QMainWindow):
         # Screen Region Selector Overlay
         self.screen_selector = ScreenRegionSelector()
         self.screen_selector.sig_region_selected.connect(self._on_region_selected)
+
+        # Transparent click-through arrows on the live board
+        self.board_overlay = BoardOverlayWindow()
+        self.chk_screen_overlay = QCheckBox("Screen overlay")
+        self.chk_screen_overlay.setChecked(True)
+        self.chk_screen_overlay.setToolTip("Draw analysis arrows on top of the captured chessboard.")
+        self.chk_screen_overlay.setStyleSheet(
+            "QCheckBox { color: #89B4FA; font-weight: bold; font-size: 11px; spacing: 4px; }"
+        )
 
         # Worker Threads
         self.vision_worker = VisionWorker(get_board_func=lambda: self.game_state.board)
@@ -215,7 +225,7 @@ class MainWindow(QMainWindow):
         self.btn_auto_detect = QPushButton("Auto-Detect Board")
         self.btn_toggle_tracking = QPushButton("Start Tracking")
         self.btn_toggle_tracking.setCheckable(True)
-        self.btn_flip_board = QPushButton("Flip Perspective")
+        self.btn_flip_board = QPushButton("Flip Board")
         self.btn_reset_game = QPushButton("Reset Position")
 
         # Undo & Sync Board Buttons
@@ -291,9 +301,9 @@ class MainWindow(QMainWindow):
         self.spin_lines_2.setStyleSheet(spin_style)
         
         self.spin_lines_3 = QSpinBox()
-        self.spin_lines_3.setRange(1, 10)
-        self.spin_lines_3.setValue(1)
-        self.spin_lines_3.setStyleSheet(spin_style)
+        self.spin_lines_1.setToolTip("How many arrows Engine 1 draws")
+        self.spin_lines_2.setToolTip("How many arrows Engine 2 draws")
+        self.spin_lines_3.setToolTip("How many arrows Engine 3 draws")
         
         # Engine Aggressiveness / Contempt
         self.spin_aggressiveness = QSpinBox()
@@ -477,7 +487,7 @@ class MainWindow(QMainWindow):
         self.lbl_engine_sel_1.setFont(QFont("Segoe UI", 10))
         row1.addWidget(self.lbl_engine_sel_1)
         row1.addWidget(self.cmb_white_engine, stretch=1)
-        row1.addWidget(QLabel("Lns:"))
+        row1.addWidget(QLabel("Arrows:"))
         row1.addWidget(self.spin_lines_1)
         engine_assign_layout.addLayout(row1)
         
@@ -612,9 +622,9 @@ class MainWindow(QMainWindow):
 
         # Settings Signals
         self.spin_interval.valueChanged.connect(self._on_vision_interval_changed)
-        self.spin_lines_1.valueChanged.connect(lambda v: self.engine_worker.set_engine_multipv(self.cmb_white_engine.currentData(), 0, v))
-        self.spin_lines_2.valueChanged.connect(lambda v: self.engine_worker.set_engine_multipv(self.cmb_black_engine.currentData(), 1, v))
-        self.spin_lines_3.valueChanged.connect(lambda v: self.engine_worker.set_engine_multipv(self.cmb_tertiary_engine.currentData(), 2, v))
+        self.spin_lines_1.valueChanged.connect(self._on_lines_changed)
+        self.spin_lines_2.valueChanged.connect(self._on_lines_changed)
+        self.spin_lines_3.valueChanged.connect(self._on_lines_changed)
         self.spin_aggressiveness.valueChanged.connect(self.engine_worker.set_engine_aggressiveness)
 
         # Vision signals
@@ -648,6 +658,29 @@ class MainWindow(QMainWindow):
     def _on_vision_interval_changed(self, val: float) -> None:
         """Updates the background polling interval of the screen capture."""
         self.vision_worker.poll_interval_ms = int(val * 1000)
+
+    def _on_lines_changed(self, _value: int = 0) -> None:
+        """Syncs engine MultiPV and board arrow limits when any lines spinbox changes."""
+        l1 = self.spin_lines_1.value()
+        l2 = self.spin_lines_2.value()
+        l3 = self.spin_lines_3.value()
+
+        # Update engine MultiPV counts
+        self.engine_worker.set_engine_multipv(
+            self.cmb_white_engine.currentData() or "stockfish", 0, l1
+        )
+        self.engine_worker.set_engine_multipv(
+            self.cmb_black_engine.currentData() or "stockfish", 1, l2
+        )
+        self.engine_worker.set_engine_multipv(
+            self.cmb_tertiary_engine.currentData() or "none", 2, l3
+        )
+
+        # Update board mirror arrow drawing limits
+        self.board_mirror.set_arrow_limits(l1, l2, l3)
+
+        # Re-request analysis so the engines send back the right number of lines
+        self._request_analysis()
 
     def _start_roi_selection(self) -> None:
         """Opens snipping overlay."""

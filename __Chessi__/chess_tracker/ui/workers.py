@@ -27,6 +27,7 @@ class VisionWorker(QThread):
     sig_preview_updated = pyqtSignal(QImage, str)  # preview_image, status_text
     sig_auto_detected_box = pyqtSignal(int, int, int, int)
     sig_undo_move = pyqtSignal()  # Self-correction: request main window to undo last move
+    sig_overlay_geometry = pyqtSignal(int, int, int, int)  # inner 8x8 grid in screen coords
 
     def __init__(
         self,
@@ -51,6 +52,7 @@ class VisionWorker(QThread):
 
         # Mock frame provider for offline simulation / testing
         self.mock_frame_provider: Optional[Callable[[], Optional[np.ndarray]]] = None
+        self._last_overlay_geom: Optional[Tuple[int, int, int, int]] = None
 
     def set_region(self, x: int, y: int, width: int, height: int) -> None:
         """Sets the captured screen coordinates."""
@@ -140,6 +142,12 @@ class VisionWorker(QThread):
 
                     ix, iy, iw, ih = inner_offset
                     board_frame = frame_raw[iy : iy + ih, ix : ix + iw]
+                    if self.bbox:
+                        ox, oy, _, _ = self.bbox
+                        geom = (ox + ix, oy + iy, iw, ih)
+                        if geom != self._last_overlay_geom:
+                            self._last_overlay_geom = geom
+                            self.sig_overlay_geometry.emit(*geom)
 
                     if board_frame.size == 0:
                         board_frame = frame_raw  # safety fallback

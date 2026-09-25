@@ -1,11 +1,9 @@
 from __future__ import annotations
-
-import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import chess
 import cv2
 import numpy as np
-from PIL import Image, ImageGrab
+from PIL import ImageGrab
 
 try:
     import mss
@@ -34,14 +32,12 @@ class ScreenCapture:
                 monitors = self._sct.monitors
                 mon = monitors[monitor_index] if monitor_index < len(monitors) else monitors[0]
                 sct_img = self._sct.grab(mon)
-                # Convert BGRA to BGR
                 return np.ascontiguousarray(np.array(sct_img)[:, :, :3])
             except Exception:
                 pass
 
-        # Fallback to ImageGrab
         pil_img = ImageGrab.grab(all_screens=True).convert("RGB")
-        rgb = np.array(pil_img)
+        rgb: np.ndarray = np.array(pil_img)
         return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
     def capture_region(self, bbox: Tuple[int, int, int, int]) -> Optional[np.ndarray]:
@@ -86,7 +82,7 @@ class ScreenCapture:
     def __enter__(self) -> ScreenCapture:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.close()
 
 
@@ -100,15 +96,15 @@ def detect_chessboard_contour(
     Returns (x, y, w, h) bounding box on success, or None if not found.
     """
     h, w = frame.shape[:2]
-    total_area = float(w * h)
+    total_area: float = float(w * h)
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blurred, 40, 140)
+    gray: np.ndarray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+    blurred: np.ndarray = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges: np.ndarray = cv2.Canny(blurred, 40, 140)
 
-    # Dilate slightly to connect segmented board borders
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    dilated = cv2.dilate(edges, kernel, iterations=1)
+    # Dilate slightly to connect board perimeter edges
+    kernel: np.ndarray = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    dilated: np.ndarray = cv2.dilate(edges, kernel, iterations=1)
 
     contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -116,16 +112,16 @@ def detect_chessboard_contour(
     max_area: float = 0.0
 
     for cnt in contours:
-        peri = cv2.arcLength(cnt, True)
+        peri: float = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
         bx, by, bw, bh = cv2.boundingRect(cnt)
         if bh == 0:
             continue
 
-        aspect = bw / float(bh)
-        area = cv2.contourArea(cnt)
+        aspect: float = bw / float(bh)
+        area: float = cv2.contourArea(cnt)
 
-        # Board must be reasonably large, square, and occupy significant screen area
+        # Chessboard must be square and cover significant area
         if area > (total_area * min_area_ratio) and 0.88 <= aspect <= 1.14:
             if area > max_area:
                 max_area = area
@@ -134,60 +130,54 @@ def detect_chessboard_contour(
     return best_box
 
 
-SlicedCell = Tuple[Tuple[int, int, int, int], np.ndarray, np.ndarray]
-
-
 def slice_board_grid(
     board_crop: np.ndarray,
     is_flipped: bool = False,
     outer_margin_pct: float = 0.0,
     inner_inset_pct: float = 0.12,
 ) -> Dict[chess.Square, Tuple[Tuple[int, int, int, int], np.ndarray, np.ndarray]]:
-    """Divides the localized board into an exact 8x8 grid with inward-cell padding.
+    """Divides localized board into an exact 8x8 grid with inward-cell padding.
 
     Returns mapping of chess.Square -> ((x1, y1, x2, y2), full_cell_bgr, inset_roi_bgr).
     """
     bh, bw = board_crop.shape[:2]
 
-    margin_x = int(round(bw * max(0.0, min(15.0, outer_margin_pct)) / 100.0))
-    margin_y = int(round(bh * max(0.0, min(15.0, outer_margin_pct)) / 100.0))
+    margin_x: int = int(round(bw * max(0.0, min(15.0, outer_margin_pct)) / 100.0))
+    margin_y: int = int(round(bh * max(0.0, min(15.0, outer_margin_pct)) / 100.0))
 
-    active_x = margin_x
-    active_y = margin_y
-    active_w = max(16, bw - 2 * margin_x)
-    active_h = max(16, bh - 2 * margin_y)
+    active_x: int = margin_x
+    active_y: int = margin_y
+    active_w: int = max(16, bw - 2 * margin_x)
+    active_h: int = max(16, bh - 2 * margin_y)
 
-    sq_w = active_w / 8.0
-    sq_h = active_h / 8.0
+    sq_w: float = active_w / 8.0
+    sq_h: float = active_h / 8.0
 
     grid_slices: Dict[chess.Square, Tuple[Tuple[int, int, int, int], np.ndarray, np.ndarray]] = {}
 
     for row in range(8):
         for col in range(8):
-            # Chessboard coordinate mapping
-            rank = row if is_flipped else (7 - row)
-            file = (7 - col) if is_flipped else col
-            sq = chess.square(file, rank)
+            rank: int = row if is_flipped else (7 - row)
+            file: int = (7 - col) if is_flipped else col
+            sq: chess.Square = chess.square(file, rank)
 
-            x1 = active_x + int(round(col * sq_w))
-            y1 = active_y + int(round(row * sq_h))
-            x2 = active_x + int(round((col + 1) * sq_w))
-            y2 = active_y + int(round((row + 1) * sq_h))
+            x1: int = active_x + int(round(col * sq_w))
+            y1: int = active_y + int(round(row * sq_h))
+            x2: int = active_x + int(round((col + 1) * sq_w))
+            y2: int = active_y + int(round((row + 1) * sq_h))
 
-            # Bound within crop dimensions
             x1 = max(0, min(bw - 1, x1))
             x2 = max(x1 + 1, min(bw, x2))
             y1 = max(0, min(bh - 1, y1))
             y2 = max(y1 + 1, min(bh, y2))
 
-            cell_img = board_crop[y1:y2, x1:x2]
+            cell_img: np.ndarray = board_crop[y1:y2, x1:x2]
             ch, cw = cell_img.shape[:2]
 
-            # Inward cell padding to exclude borders and highlight fringes
-            pad_x = int(round(cw * max(0.02, min(0.25, inner_inset_pct))))
-            pad_y = int(round(ch * max(0.02, min(0.25, inner_inset_pct))))
+            pad_x: int = int(round(cw * max(0.02, min(0.25, inner_inset_pct))))
+            pad_y: int = int(round(ch * max(0.02, min(0.25, inner_inset_pct))))
 
-            roi_img = cell_img[pad_y : max(pad_y + 1, ch - pad_y), pad_x : max(pad_x + 1, cw - pad_x)]
+            roi_img: np.ndarray = cell_img[pad_y : max(pad_y + 1, ch - pad_y), pad_x : max(pad_x + 1, cw - pad_x)]
             if roi_img.size == 0:
                 roi_img = cell_img
 

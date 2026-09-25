@@ -22,10 +22,20 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 from chess_tracker.config import (
-    COLOR_ARROW_ENGINE,
     COLOR_ARROW_VISION,
     COLOR_DARK_SQUARE,
     COLOR_LIGHT_SQUARE,
+)
+from chess_tracker.ui.arrow_painter import (
+    ARROW_COLORS_PRIMARY,
+    ARROW_COLORS_SECONDARY,
+    ARROW_COLORS_TERTIARY,
+    MAX_ARROWS,
+    build_arrow_specs,
+    draw_arrow_specs,
+    draw_eval_arrow,
+    format_eval_score,
+    square_rect,
 )
 
 
@@ -34,35 +44,6 @@ class BoardMirrorWidget(QWidget):
 
     sig_move_requested = pyqtSignal(chess.Move)
 
-    # Arrow colors for top 3 primary engine lines (decreasing confidence)
-    ARROW_COLORS_TOP3 = [
-        QColor("#00D2D3"),  # #1 Best: Cyan neon
-        QColor("#A6E3A1"),  # #2 Second: Mint green
-        QColor("#F9E2AF"),  # #3 Third: Warm amber
-    ]
-    ARROW_ALPHAS_TOP3 = [210, 150, 110]  # Decreasing opacity
-    ARROW_WIDTHS_TOP3 = [0.18, 0.14, 0.10]  # Decreasing thickness (ratio of square_size)
-
-    # Arrow colors for secondary (neural net) engine lines
-    ARROW_COLORS_NN = [
-        QColor("#C084FC"),  # #1 NN Best: Bright violet
-        QColor("#A78BFA"),  # #2 NN Second: Soft purple
-        QColor("#DDD6FE"),  # #3 NN Third: Pale purple
-    ]
-    ARROW_ALPHAS_NN = [200, 140, 100]
-    ARROW_WIDTHS_NN = [0.16, 0.12, 0.08]
-
-    # Arrow colors for tertiary engine lines
-    ARROW_COLORS_TERT = [
-        QColor("#F472B6"),  # Pink
-        QColor("#FBCFE8"),  # Light Pink
-        QColor("#FDF2F8"),  # Pale Pink
-    ]
-    ARROW_ALPHAS_TERT = [200, 140, 100]
-    ARROW_WIDTHS_TERT = [0.14, 0.10, 0.06]
-
-    # Losing move override color
-    COLOR_LOSING = QColor("#EF4444")  # Red for evaluated losing moves
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -74,13 +55,18 @@ class BoardMirrorWidget(QWidget):
         self.is_flipped: bool = False
         self.last_move: Optional[chess.Move] = None
         self.engine_best_move: Optional[chess.Move] = None
-        self.engine_top_moves: List[chess.Move] = []  # Up to 3 ranked moves
-        self.engine_top_scores: List[int] = []  # Centipawn scores for each top move
+        self.engine_top_moves: List[chess.Move] = []
+        self.engine_top_scores: List[int] = []
         self.vision_move: Optional[chess.Move] = None
+        self.white_to_move: bool = True
+        self.max_primary_arrows: int = 3
+        self.max_secondary_arrows: int = 2
+        self.max_tertiary_arrows: int = 1
 
-        # Secondary (neural net) engine arrows for hybrid mode
-        self.nn_top_moves: List[chess.Move] = []  # Up to 2 NN moves
-        self.nn_top_scores: List[int] = []  # Centipawn scores for NN moves
+        self.nn_top_moves: List[chess.Move] = []
+        self.nn_top_scores: List[int] = []
+        self.tert_top_moves: List[chess.Move] = []
+        self.tert_top_scores: List[int] = []
 
         self.selected_square: Optional[chess.Square] = None
         self.candidate_moves: List[chess.Move] = []
@@ -112,24 +98,55 @@ class BoardMirrorWidget(QWidget):
         self.engine_best_move = move
         self.update()
 
-    def set_engine_top_moves(self, moves: List[chess.Move], scores: Optional[List[int]] = None) -> None:
-        """Sets up to 3 top engine candidate moves for multi-arrow display."""
-        self.engine_top_moves = moves[:3]
-        self.engine_top_scores = (scores or [])[:3]
+    def set_arrow_limits(self, primary: int, secondary: int, tertiary: int) -> None:
+        """Caps how many arrows each engine may draw (Trio-Engine Mode)."""
+        self.max_primary_arrows = max(1, min(MAX_ARROWS, primary))
+        self.max_secondary_arrows = max(0, min(MAX_ARROWS, secondary))
+        self.max_tertiary_arrows = max(0, min(MAX_ARROWS, tertiary))
+        self.update()
+
+    def set_engine_top_moves(
+        self,
+        moves: List[chess.Move],
+        scores: Optional[List[int]] = None,
+        white_to_move: Optional[bool] = None,
+    ) -> None:
+        """Sets primary engine candidate moves for multi-arrow display."""
+        limit = self.max_primary_arrows
+        self.engine_top_moves = list(moves[:limit])
+        self.engine_top_scores = list((scores or [])[:limit])
+        if white_to_move is not None:
+            self.white_to_move = white_to_move
         if moves:
             self.engine_best_move = moves[0]
         self.update()
 
-    def set_nn_top_moves(self, moves: List[chess.Move], scores: Optional[List[int]] = None) -> None:
-        """Sets up to 3 secondary engine candidate arrows."""
-        self.nn_top_moves = moves[:3]
-        self.nn_top_scores = (scores or [])[:3]
+    def set_nn_top_moves(
+        self,
+        moves: List[chess.Move],
+        scores: Optional[List[int]] = None,
+        white_to_move: Optional[bool] = None,
+    ) -> None:
+        """Sets secondary engine candidate arrows."""
+        limit = self.max_secondary_arrows
+        self.nn_top_moves = list(moves[:limit])
+        self.nn_top_scores = list((scores or [])[:limit])
+        if white_to_move is not None:
+            self.white_to_move = white_to_move
         self.update()
 
-    def set_tert_top_moves(self, moves: List[chess.Move], scores: Optional[List[int]] = None) -> None:
-        """Sets up to 3 tertiary engine candidate arrows."""
-        self.tert_top_moves = moves[:3]
-        self.tert_top_scores = (scores or [])[:3]
+    def set_tert_top_moves(
+        self,
+        moves: List[chess.Move],
+        scores: Optional[List[int]] = None,
+        white_to_move: Optional[bool] = None,
+    ) -> None:
+        """Sets tertiary engine candidate arrows."""
+        limit = self.max_tertiary_arrows
+        self.tert_top_moves = list(moves[:limit])
+        self.tert_top_scores = list((scores or [])[:limit])
+        if white_to_move is not None:
+            self.white_to_move = white_to_move
         self.update()
 
     def clear_nn_arrows(self) -> None:
@@ -149,15 +166,7 @@ class BoardMirrorWidget(QWidget):
         self, sq: chess.Square, square_size: float, offset_x: float, offset_y: float
     ) -> QRectF:
         """Calculates square rectangle on canvas based on board orientation."""
-        file_idx = chess.square_file(sq)
-        rank_idx = chess.square_rank(sq)
-
-        col = (7 - file_idx) if self.is_flipped else file_idx
-        row = rank_idx if self.is_flipped else (7 - rank_idx)
-
-        x = offset_x + col * square_size
-        y = offset_y + row * square_size
-        return QRectF(x, y, square_size, square_size)
+        return square_rect(sq, square_size, offset_x, offset_y, self.is_flipped)
 
     def paintEvent(self, event: QPaintEvent) -> None:
         """Renders wood tiles, move highlights, coordinate markings, pieces, and arrows."""
@@ -257,54 +266,48 @@ class BoardMirrorWidget(QWidget):
                 painter.setBrush(QBrush(QColor(50, 50, 50, 90)))
                 painter.drawEllipse(center, square_size * 0.15, square_size * 0.15)
 
-        # 6. Paint Strategic Tactical Arrows (multi-PV)
+        # 6. Paint Strategic Tactical Arrows (multi-PV) with eval in the shaft
         if self.vision_move is not None:
-            self._draw_arrow(
-                painter, self.vision_move, QColor(COLOR_ARROW_VISION), square_size, offset_x, offset_y, width=square_size * 0.14
+            draw_eval_arrow(
+                painter,
+                self.vision_move,
+                QColor(COLOR_ARROW_VISION),
+                square_size,
+                offset_x,
+                offset_y,
+                self.is_flipped,
+                width=square_size * 0.14,
             )
 
-        # Draw tertiary arrows (bottom layer)
-        for idx in range(min(3, len(self.tert_top_moves)) - 1, -1, -1):
-            move = self.tert_top_moves[idx]
-            is_losing = (idx < len(self.tert_top_scores) and self.tert_top_scores[idx] <= -100)
-            if is_losing:
-                color = QColor(self.COLOR_LOSING)
-                color.setAlpha(200)
-            else:
-                color = QColor(self.ARROW_COLORS_TERT[idx])
-                color.setAlpha(self.ARROW_ALPHAS_TERT[idx])
-            score_text = self._format_score(self.tert_top_scores[idx]) if idx < len(self.tert_top_scores) else ""
-            self._draw_arrow(painter, move, color, square_size, offset_x, offset_y, width=square_size * self.ARROW_WIDTHS_TERT[idx], text=score_text)
-
-        # Draw secondary arrows
-        for idx in range(min(3, len(self.nn_top_moves)) - 1, -1, -1):
-            move = self.nn_top_moves[idx]
-            is_losing = (idx < len(self.nn_top_scores) and self.nn_top_scores[idx] <= -100)
-            if is_losing:
-                color = QColor(self.COLOR_LOSING)
-                color.setAlpha(200)
-            else:
-                color = QColor(self.ARROW_COLORS_NN[idx])
-                color.setAlpha(self.ARROW_ALPHAS_NN[idx])
-            score_text = self._format_score(self.nn_top_scores[idx]) if idx < len(self.nn_top_scores) else ""
-            self._draw_arrow(painter, move, color, square_size, offset_x, offset_y, width=square_size * self.ARROW_WIDTHS_NN[idx], text=score_text)
-
-        # Draw primary engine arrows (top layer)
+        tert_specs = build_arrow_specs(
+            self.tert_top_moves,
+            self.tert_top_scores,
+            ARROW_COLORS_TERTIARY,
+            self.white_to_move,
+            max_arrows=self.max_tertiary_arrows,
+            width_start=0.14,
+        )
+        nn_specs = build_arrow_specs(
+            self.nn_top_moves,
+            self.nn_top_scores,
+            ARROW_COLORS_SECONDARY,
+            self.white_to_move,
+            max_arrows=self.max_secondary_arrows,
+            width_start=0.16,
+        )
         arrows_to_draw = self.engine_top_moves if self.engine_top_moves else (
             [self.engine_best_move] if self.engine_best_move else []
         )
-        scores_to_check = self.engine_top_scores if self.engine_top_scores else []
-        for idx in range(min(3, len(arrows_to_draw)) - 1, -1, -1):
-            move = arrows_to_draw[idx]
-            is_losing = (idx < len(scores_to_check) and scores_to_check[idx] <= -100)
-            if is_losing:
-                color = QColor(self.COLOR_LOSING)
-                color.setAlpha(200)
-            else:
-                color = QColor(self.ARROW_COLORS_TOP3[idx])
-                color.setAlpha(self.ARROW_ALPHAS_TOP3[idx])
-            score_text = self._format_score(scores_to_check[idx]) if idx < len(scores_to_check) else ""
-            self._draw_arrow(painter, move, color, square_size, offset_x, offset_y, width=square_size * self.ARROW_WIDTHS_TOP3[idx], text=score_text)
+        primary_specs = build_arrow_specs(
+            arrows_to_draw,
+            self.engine_top_scores,
+            ARROW_COLORS_PRIMARY,
+            self.white_to_move,
+            max_arrows=self.max_primary_arrows,
+        )
+        draw_arrow_specs(painter, tert_specs, square_size, offset_x, offset_y, self.is_flipped)
+        draw_arrow_specs(painter, nn_specs, square_size, offset_x, offset_y, self.is_flipped)
+        draw_arrow_specs(painter, primary_specs, square_size, offset_x, offset_y, self.is_flipped)
 
     def _draw_piece(self, painter: QPainter, piece: chess.Piece, rect: QRectF) -> None:
         """Renders crisp vector chess piece matching Neo/Classic aesthetic."""
@@ -453,91 +456,4 @@ class BoardMirrorWidget(QWidget):
             painter.drawLine(int(cx - cross_size * 0.8), int(cross_y - cross_size * 0.3), int(cx + cross_size * 0.8), int(cross_y - cross_size * 0.3))
 
     def _format_score(self, score: int) -> str:
-        """Formats an internal centipawn score into a string for the arrow text."""
-        # Check if mate
-        if score > 90000:
-            return f"M{99999 - score}"
-        elif score < -90000:
-            return f"-M{score + 99999}"
-        else:
-            val = score / 100.0
-            return f"{val:+.1f}"
-
-    def _draw_arrow(
-        self,
-        painter: QPainter,
-        move: chess.Move,
-        color: QColor,
-        square_size: float,
-        offset_x: float,
-        offset_y: float,
-        width: float = 8.0,
-        text: str = "",
-    ) -> None:
-        """Renders glowing tactical arrow between source and target square centers."""
-        r_from = self._get_square_rect(move.from_square, square_size, offset_x, offset_y)
-        r_to = self._get_square_rect(move.to_square, square_size, offset_x, offset_y)
-
-        p1 = r_from.center()
-        p2 = r_to.center()
-
-        dx = p2.x() - p1.x()
-        dy = p2.y() - p1.y()
-        dist = math.hypot(dx, dy)
-        if dist < 1.0:
-            return
-
-        ux = dx / dist
-        uy = dy / dist
-        nx = -uy
-        ny = ux
-
-        head_len = min(square_size * 0.45, dist * 0.38)
-        head_w = head_len * 0.75
-        shaft_w = width
-
-        arrow_tip = p2 - QPointF(ux * square_size * 0.15, uy * square_size * 0.15)
-        arrow_base = p1 + QPointF(ux * square_size * 0.20, uy * square_size * 0.20)
-        head_base = arrow_tip - QPointF(ux * head_len, uy * head_len)
-
-        path = QPainterPath()
-        # Shaft
-        path.moveTo(arrow_base + QPointF(nx * shaft_w / 2.0, ny * shaft_w / 2.0))
-        path.lineTo(head_base + QPointF(nx * shaft_w / 2.0, ny * shaft_w / 2.0))
-        # Arrowhead wings
-        path.lineTo(head_base + QPointF(nx * head_w, ny * head_w))
-        path.lineTo(arrow_tip)
-        path.lineTo(head_base - QPointF(nx * head_w, ny * head_w))
-        path.lineTo(head_base - QPointF(nx * shaft_w / 2.0, ny * shaft_w / 2.0))
-        path.lineTo(arrow_base - QPointF(nx * shaft_w / 2.0, ny * shaft_w / 2.0))
-        path.closeSubpath()
-
-        arrow_color = QColor(color)
-        arrow_color.setAlpha(200)
-        pen = QPen(QColor(20, 20, 30, 220), 1.8)
-        painter.setPen(pen)
-        painter.setBrush(QBrush(arrow_color))
-        painter.drawPath(path)
-
-        # Draw the text in the middle of the arrow
-        if text:
-            mid_x = (arrow_base.x() + head_base.x()) / 2
-            mid_y = (arrow_base.y() + head_base.y()) / 2
-            
-            # Setup text font and bounding box
-            painter.setPen(QColor(255, 255, 255, 240))  # White text
-            font = QFont("Segoe UI", int(square_size * 0.22), QFont.Weight.Bold)
-            painter.setFont(font)
-            
-            # Draw a subtle background for text readability
-            fm = painter.fontMetrics()
-            rect = fm.boundingRect(text)
-            pad = 2
-            bg_rect = QRectF(mid_x - rect.width() / 2 - pad, mid_y - rect.height() / 2 - pad, rect.width() + pad*2, rect.height() + pad*2)
-            
-            painter.setBrush(QColor(0, 0, 0, 160))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(bg_rect, 4, 4)
-            
-            painter.setPen(QColor(255, 255, 255, 255))
-            painter.drawText(bg_rect, Qt.AlignmentFlag.AlignCenter, text)
+        return format_eval_score(score)

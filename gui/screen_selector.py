@@ -1,118 +1,114 @@
 from __future__ import annotations
-import tkinter as tk
-from typing import Callable
+from typing import Optional, Tuple
+
+from PyQt6.QtCore import QPoint, QRect, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPaintEvent, QPainter, QPen
+from PyQt6.QtWidgets import QApplication, QWidget
 
 
-class ScreenRegionSelector:
-    """Full-screen interactive overlay allowing the user to click and drag a bounding box."""
+class ScreenRegionSelector(QWidget):
+    """Fullscreen drag-and-drop selector overlay to register screen bounding box coordinates."""
 
-    def __init__(
-        self,
-        parent: tk.Tk | tk.Toplevel,
-        on_region_selected: Callable[[tuple[int, int, int, int]], None],
-    ) -> None:
-        self.parent: tk.Tk | tk.Toplevel = parent
-        self.on_region_selected: Callable[[tuple[int, int, int, int]], None] = on_region_selected
+    sig_region_selected = pyqtSignal(tuple)  # (left, top, width, height)
 
-        self.start_x: int = 0
-        self.start_y: int = 0
-        self.start_x_root: int = 0
-        self.start_y_root: int = 0
-        self.rect_id: int | None = None
-        self.label_id: int | None = None
-
-        self.overlay: tk.Toplevel = tk.Toplevel(parent)
-        self.overlay.attributes("-fullscreen", True)
-        self.overlay.attributes("-alpha", 0.35)
-        self.overlay.attributes("-topmost", True)
-        self.overlay.configure(bg="#11111B", cursor="crosshair")
-
-        self.canvas: tk.Canvas = tk.Canvas(
-            self.overlay,
-            bg="#11111B",
-            highlightthickness=0,
-            cursor="crosshair",
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(
+            parent,
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool,
         )
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setCursor(Qt.CursorShape.CrossCursor)
 
-        self.canvas.bind("<ButtonPress-1>", self._on_button_press)
-        self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
-        self.canvas.bind("<ButtonRelease-1>", self._on_button_release)
-        self.overlay.bind("<Escape>", self._on_cancel)
+        self._start_pos: Optional[QPoint] = None
+        self._current_pos: Optional[QPoint] = None
+        self._is_dragging: bool = False
+
+        # Cover virtual geometry across all connected monitors
+        screen_geo = QApplication.primaryScreen().virtualGeometry()
+        self.setGeometry(screen_geo)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Begins bounding box drag."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._start_pos = event.globalPosition().toPoint()
+            self._current_pos = self._start_pos
+            self._is_dragging = True
+            self.update()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Updates drag rectangle coordinates."""
+        if self._is_dragging:
+            self._current_pos = event.globalPosition().toPoint()
+            self.update()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Finalizes selection and emits registered coordinates."""
+        if event.button() == Qt.MouseButton.LeftButton and self._is_dragging:
+            self._is_dragging = False
+            end_pos: QPoint = event.globalPosition().toPoint()
+
+            if self._start_pos is not None:
+                x1: int = min(self._start_pos.x(), end_pos.x())
+                y1: int = min(self._start_pos.y(), end_pos.y())
+                w: int = abs(end_pos.x() - self._start_pos.x())
+                h: int = abs(end_pos.y() - self._start_pos.y())
+
+                if w >= 64 and h >= 64:
+                    self.sig_region_selected.emit((x1, y1, w, h))
+
+            self.close()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Cancels region selection when Escape is pressed."""
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """Paints dark screen mask and highlighted target rectangle."""
+        painter: QPainter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # Semi-transparent dark background
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 110))
 
         # Instructions banner at top center
-        sw: int = self.overlay.winfo_screenwidth()
-        self.canvas.create_text(
-            sw // 2,
-            40,
-            text="🎯 Drag a rectangle around the chessboard. Press ESC to cancel.",
-            font=("Segoe UI", 14, "bold"),
-            fill="#89B4FA",
+        painter.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        painter.setPen(QColor("#89B4FA"))
+        banner_rect = QRect(0, 40, self.width(), 35)
+        painter.drawText(
+            banner_rect,
+            Qt.AlignmentFlag.AlignCenter,
+            "🎯 Drag a rectangle around the target chessboard. Press ESC to cancel.",
         )
 
-    def _on_button_press(self, event: tk.Event) -> None:
-        self.start_x = event.x
-        self.start_y = event.y
-        self.start_x_root = event.x_root
-        self.start_y_root = event.y_root
-        if self.rect_id is not None:
-            self.canvas.delete(self.rect_id)
-        if self.label_id is not None:
-            self.canvas.delete(self.label_id)
+        # Draw selected bounding box
+        if self._start_pos is not None and self._current_pos is not None:
+            # Map global coordinates to local widget coordinates
+            p1: QPoint = self.mapFromGlobal(self._start_pos)
+            p2: QPoint = self.mapFromGlobal(self._current_pos)
 
-        self.rect_id = self.canvas.create_rectangle(
-            self.start_x,
-            self.start_y,
-            self.start_x,
-            self.start_y,
-            outline="#A6E3A1",
-            width=3,
-        )
+            rect = QRect(
+                min(p1.x(), p2.x()),
+                min(p1.y(), p2.y()),
+                abs(p2.x() - p1.x()),
+                abs(p2.y() - p1.y()),
+            )
 
-    def _on_mouse_drag(self, event: tk.Event) -> None:
-        if self.rect_id is None:
-            return
+            # Clear inner rectangle so user sees actual screen clearly
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            painter.fillRect(rect, Qt.GlobalColor.transparent)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
-        cur_x: int = event.x
-        cur_y: int = event.y
-        self.canvas.coords(self.rect_id, self.start_x, self.start_y, cur_x, cur_y)
+            # Vibrant green dashed selection border
+            pen = QPen(QColor("#A6E3A1"), 3, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(rect)
 
-        w: int = abs(cur_x - self.start_x)
-        h: int = abs(cur_y - self.start_y)
-        mid_x: int = min(self.start_x, cur_x) + w // 2
-        mid_y: int = min(self.start_y, cur_y) + h // 2
-
-        dim_text: str = f"{w} × {h} px"
-        if self.label_id is not None:
-            self.canvas.delete(self.label_id)
-
-        self.label_id = self.canvas.create_text(
-            mid_x,
-            mid_y,
-            text=dim_text,
-            font=("Segoe UI", 12, "bold"),
-            fill="#FFFFFF",
-        )
-
-    def _on_button_release(self, event: tk.Event) -> None:
-        end_x_root: int = event.x_root
-        end_y_root: int = event.y_root
-
-        left: int = min(self.start_x_root, end_x_root)
-        top: int = min(self.start_y_root, end_y_root)
-        width: int = abs(end_x_root - self.start_x_root)
-        height: int = abs(end_y_root - self.start_y_root)
-
-        self._close()
-
-        if width >= 50 and height >= 50:
-            self.on_region_selected((left, top, width, height))
-
-    def _on_cancel(self, event: tk.Event) -> None:
-        self._close()
-
-    def _close(self) -> None:
-        try:
-            self.overlay.destroy()
-        except Exception:
-            pass
+            # Dimensions badge
+            dim_str: str = f"{rect.width()} × {rect.height()} px"
+            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+            painter.setPen(QColor("#FFFFFF"))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, dim_str)

@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -9,27 +8,27 @@ import numpy as np
 
 @dataclass(frozen=True)
 class PieceTemplate:
-    """Stores normalized grayscale and Canny edge templates for a specific piece."""
+    """Stores normalized grayscale and Canny edge templates for a specific chess piece."""
     symbol: str
     gray_templates: tuple[np.ndarray, ...]
     edge_templates: tuple[np.ndarray, ...]
 
 
 class TemplateStore:
-    """Manages the extracted piece templates and handles serialization/deserialization."""
+    """Manages extracted piece templates and handles access by FEN piece symbol."""
 
     def __init__(
         self,
         templates: Dict[str, PieceTemplate],
         target_size: Tuple[int, int] = (64, 64),
-        roi_ratio: float = 0.76,
+        roi_ratio: float = 0.75,
     ) -> None:
         self.templates: Dict[str, PieceTemplate] = templates
         self.target_size: Tuple[int, int] = target_size
         self.roi_ratio: float = roi_ratio
 
     def get(self, symbol: str) -> Optional[PieceTemplate]:
-        """Retrieves template by FEN piece symbol."""
+        """Retrieves template by piece symbol ('P', 'n', etc.)."""
         return self.templates.get(symbol)
 
     def symbols(self) -> List[str]:
@@ -43,17 +42,17 @@ def detect_board_crop(
 ) -> Tuple[int, int, int, int]:
     """Detects the largest high-contrast square chessboard contour in the image.
 
-    Returns (x, y, w, h). If no contour exceeds min_area_ratio, returns the full image bounding box.
+    Returns bounding box (x, y, w, h). If not found, falls back to full image bounds.
     """
     h, w = image.shape[:2]
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blurred, 50, 150)
+    gray: np.ndarray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+    blurred: np.ndarray = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges: np.ndarray = cv2.Canny(blurred, 50, 150)
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     best_box: Optional[Tuple[int, int, int, int]] = None
     max_area: float = 0.0
-    total_area = float(w * h)
+    total_area: float = float(w * h)
 
     for cnt in contours:
         peri = cv2.arcLength(cnt, True)
@@ -61,8 +60,8 @@ def detect_board_crop(
         bx, by, bw, bh = cv2.boundingRect(cnt)
         if bh == 0:
             continue
-        aspect = bw / float(bh)
-        area = cv2.contourArea(cnt)
+        aspect: float = bw / float(bh)
+        area: float = cv2.contourArea(cnt)
         if area > (total_area * min_area_ratio) and 0.85 <= aspect <= 1.15:
             if area > max_area:
                 max_area = area
@@ -77,28 +76,28 @@ def crop_square_roi(
     board_crop: np.ndarray,
     row: int,
     col: int,
-    roi_ratio: float = 0.76,
+    roi_ratio: float = 0.75,
     target_size: Tuple[int, int] = (64, 64),
 ) -> np.ndarray:
-    """Crops the central 70-75% ROI of a designated square, excluding edges and coordinate labels."""
+    """Crops the central 70-75% ROI of an individual square, excluding tile borders and coords."""
     bh, bw = board_crop.shape[:2]
-    sq_w = bw / 8.0
-    sq_h = bh / 8.0
+    sq_w: float = bw / 8.0
+    sq_h: float = bh / 8.0
 
-    x1 = int(round(col * sq_w))
-    y1 = int(round(row * sq_h))
-    x2 = int(round((col + 1) * sq_w))
-    y2 = int(round((row + 1) * sq_h))
+    x1: int = int(round(col * sq_w))
+    y1: int = int(round(row * sq_h))
+    x2: int = int(round((col + 1) * sq_w))
+    y2: int = int(round((row + 1) * sq_h))
 
-    square = board_crop[y1:y2, x1:x2]
+    square: np.ndarray = board_crop[y1:y2, x1:x2]
     sh, sw = square.shape[:2]
     if sh < 4 or sw < 4:
         raise ValueError(f"Square slice too small at row={row}, col={col}: ({sw}x{sh})")
 
-    pad_x = int(round(sw * (1.0 - roi_ratio) / 2.0))
-    pad_y = int(round(sh * (1.0 - roi_ratio) / 2.0))
+    pad_x: int = int(round(sw * (1.0 - roi_ratio) / 2.0))
+    pad_y: int = int(round(sh * (1.0 - roi_ratio) / 2.0))
 
-    roi = square[pad_y : sh - pad_y, pad_x : sw - pad_x]
+    roi: np.ndarray = square[pad_y : sh - pad_y, pad_x : sw - pad_x]
     if roi.size == 0:
         roi = square
 
@@ -108,13 +107,13 @@ def crop_square_roi(
 def extract_templates_from_board(
     reference_image: np.ndarray,
     target_size: Tuple[int, int] = (64, 64),
-    roi_ratio: float = 0.76,
+    roi_ratio: float = 0.75,
     canny_thresh1: int = 50,
     canny_thresh2: int = 150,
 ) -> TemplateStore:
-    """Extracts normalized grayscale assets and Canny edge masks for all 12 pieces from reference board."""
+    """Extracts Canny edge silhouettes and normalized grayscale profiles for all 12 pieces."""
     bx, by, bw, bh = detect_board_crop(reference_image)
-    board_crop = reference_image[by : by + bh, bx : bx + bw]
+    board_crop: np.ndarray = reference_image[by : by + bh, bx : bx + bw]
 
     piece_starting_positions: Dict[str, List[Tuple[int, int]]] = {
         "r": [(0, 0), (0, 7)],
@@ -161,9 +160,9 @@ _CACHED_STORE: Optional[TemplateStore] = None
 def load_or_extract_templates(
     reference_path: Optional[str] = None,
     target_size: Tuple[int, int] = (64, 64),
-    roi_ratio: float = 0.76,
+    roi_ratio: float = 0.75,
 ) -> TemplateStore:
-    """Loads templates from reference_board.png or cached instance."""
+    """Loads templates from reference_board.png or returns existing cached store."""
     global _CACHED_STORE
     if _CACHED_STORE is not None:
         return _CACHED_STORE
